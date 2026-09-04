@@ -46,9 +46,19 @@ done
 [ -n "$OUTDIR" ] || { echo "--out is required" >&2; exit 2; }
 [ "$(id -u)" = 0 ] || { echo "must run as root" >&2; exit 1; }
 command -v debootstrap >/dev/null || { echo "debootstrap not installed" >&2; exit 1; }
-if [ "$ARCH" != "$(dpkg --print-architecture 2>/dev/null || uname -m)" ] && ! grep -qs enabled /proc/sys/fs/binfmt_misc/qemu-aarch64; then
-    echo "binfmt_misc qemu-aarch64 is not registered on this kernel; cannot chroot into an $ARCH tree" >&2
-    exit 1
+# Foreign-architecture builds rely on the host kernel's binfmt_misc registration for
+# qemu-aarch64.  Inside a container the registration is not always visible under
+# /proc/sys/fs/binfmt_misc (it needs the binfmt_misc filesystem mounted), so this is
+# only a hint; debootstrap's second stage fails loudly if arm64 binaries cannot run.
+QEMU_STATIC=""
+if [ "$ARCH" = arm64 ] && [ "$(uname -m)" != aarch64 ]; then
+    if [ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
+        mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null || true
+    fi
+    if ! grep -qs enabled /proc/sys/fs/binfmt_misc/qemu-aarch64; then
+        echo "note: qemu-aarch64 binfmt registration not visible here; relying on the host kernel" >&2
+    fi
+    QEMU_STATIC="$(command -v qemu-aarch64-static || true)"
 fi
 
 ROOT="$OUTDIR/root"
@@ -78,8 +88,15 @@ chr_apt() { chr apt-get -o Dpkg::Options::=--force-confnew -o APT::Install-Recom
 log "debootstrap $SUITE/$ARCH from $MIRROR into $ROOT"
 umount_chroot
 rm -rf "$ROOT"; mkdir -p "$ROOT"
-debootstrap --arch="$ARCH" --variant=minbase --components=main,universe \
+debootstrap --arch="$ARCH" --variant=minbase --components=main,universe --foreign \
     --include=ca-certificates,apt-utils,gnupg "$SUITE" "$ROOT" "$MIRROR"
+# The static qemu inside the tree lets the second stage run even when the host's
+# binfmt registration lacks the F (fix-binary) flag; removed again at the end.
+if [ -n "$QEMU_STATIC" ]; then
+    install -m 755 "$QEMU_STATIC" "$ROOT/usr/bin/qemu-aarch64-static"
+fi
+DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8 chroot "$ROOT" /debootstrap/debootstrap --second-stage \
+    || die "debootstrap second stage failed (is qemu-aarch64 binfmt_misc registered on the host kernel?)"
 [ -x "$ROOT/bin/bash" ] || die "debootstrap did not produce a usable tree"
 
 # Do not start services inside the chroot.
@@ -217,6 +234,7 @@ log "cleanup"
 chr apt-get clean
 rm -rf "$ROOT/var/lib/apt/lists/"* "$ROOT/var/cache/apt/"*.bin "$ROOT/tmp/"* "$ROOT/root/.cache" 2>/dev/null || true
 rm -f "$ROOT/usr/sbin/policy-rc.d" "$ROOT/etc/resolv.conf" "$ROOT/etc/resolv.conf.build"
+rm -f "$ROOT/usr/bin/qemu-aarch64-static"
 mv "$ROOT/etc/resolv.conf.systemd" "$ROOT/etc/resolv.conf"
 rm -f "$ROOT/etc/ssh/ssh_host_"*            # regenerated on first boot
 : > "$ROOT/etc/machine-id"                  # regenerated on first boot
