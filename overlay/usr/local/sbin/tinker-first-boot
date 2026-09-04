@@ -1,0 +1,27 @@
+#!/bin/bash
+# One-time tasks after flashing: expand the root partition to the whole
+# eMMC/microSD, regenerate SSH host keys and the machine-id.
+set -u
+STAMP=/var/lib/tinker-first-boot.done
+
+rootdev="$(findmnt -n -o SOURCE / 2>/dev/null)"
+if [ -n "$rootdev" ] && [[ "$rootdev" =~ (.*mmcblk[0-9]+)p([0-9]+)$ ]]; then
+    disk="${BASH_REMATCH[1]}"; part="${BASH_REMATCH[2]}"
+    echo "growing $rootdev on $disk"
+    if command -v growpart >/dev/null; then
+        growpart "$disk" "$part" && partx -u "$disk" 2>/dev/null || true
+    else
+        # move the backup GPT to the end and extend the last partition
+        sgdisk -e "$disk" >/dev/null 2>&1 && sgdisk -d "$part" -n "$part:0:0" -c "$part:rootfs" -t "$part:8305" "$disk" >/dev/null 2>&1 && partx -u "$disk" 2>/dev/null || true
+    fi
+    resize2fs "$rootdev" 2>&1 | tail -1
+fi
+
+if [ ! -s /etc/machine-id ]; then
+    systemd-machine-id-setup 2>/dev/null || dbus-uuidgen > /etc/machine-id
+fi
+if ! ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; then
+    ssh-keygen -A >/dev/null 2>&1 && echo "ssh host keys generated"
+fi
+mkdir -p "$(dirname "$STAMP")"; date -u +%FT%TZ > "$STAMP"
+exit 0

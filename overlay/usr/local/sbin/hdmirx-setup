@@ -1,0 +1,74 @@
+#!/bin/bash
+# Bring up the Geekworm X1301 (TC358743 HDMI -> CSI-2) capture path.
+#   hdmirx-setup [edid-file]        load EDID, query the incoming timings, configure the ISP pipeline
+#   hdmirx-setup capture [N]        grab N frames (default 30) to /tmp/hdmirx.nv12 with v4l2-ctl
+#   hdmirx-setup status
+# See /usr/share/doc/tinker-edge-r/hdmi-rx.md.  The pipeline is the Rockchip
+# vendor rkisp1 driver; formats are propagated with media-ctl.
+set -u
+EDID_DEFAULT=/usr/share/hdmirx/edid-1080p30.bin
+
+find_subdev() {   # prints /dev/v4l-subdevN of the tc35874x/tc358743 bridge
+    local d n
+    for d in /dev/v4l-subdev*; do
+        [ -e "$d" ] || continue
+        n="$(cat "/sys/class/video4linux/$(basename "$d")/name" 2>/dev/null)"
+        case "$n" in tc35874x*|tc358743*|*TC358743*) echo "$d"; return 0 ;; esac
+    done
+    return 1
+}
+find_media() {
+    local m
+    for m in /dev/media*; do
+        media-ctl -d "$m" -p 2>/dev/null | grep -q 'rkisp1' && { echo "$m"; return 0; }
+    done
+    return 1
+}
+find_video() {   # rkisp1 main path video node
+    local v n
+    for v in /dev/video*; do
+        n="$(cat "/sys/class/video4linux/$(basename "$v")/name" 2>/dev/null)"
+        case "$n" in rkisp1_mainpath*|rkisp1_mainpath|*mainpath*) echo "$v"; return 0 ;; esac
+    done
+    return 1
+}
+
+SUBDEV="$(find_subdev)" || { echo "no TC358743 subdev found (is the X1301 attached to the CSI0 connector and the default DTB in use?)" >&2; exit 1; }
+MEDIA="$(find_media)" || { echo "no rkisp1 media device" >&2; exit 1; }
+VIDEO="$(find_video)" || VIDEO=/dev/video0
+SDNAME="$(media-ctl -d "$MEDIA" -p | sed -n "s/.*entity [0-9]*: \(tc35874x[^(]*\|tc358743[^(]*\) (.*/\1/p" | head -1 | sed 's/ *$//')"
+
+cmd="${1:-setup}"
+case "$cmd" in
+    status)
+        echo "subdev: $SUBDEV  media: $MEDIA  video: $VIDEO  entity: '$SDNAME'"
+        v4l2-ctl -d "$SUBDEV" --get-edid 2>/dev/null | head -2
+        v4l2-ctl -d "$SUBDEV" --query-dv-timings 2>&1 | head -20 ;;
+    capture)
+        n="${2:-30}"
+        w="$(v4l2-ctl -d "$SUBDEV" --get-dv-timings 2>/dev/null | sed -n 's/.*Active width: *//p')"
+        h="$(v4l2-ctl -d "$SUBDEV" --get-dv-timings 2>/dev/null | sed -n 's/.*Active height: *//p')"
+        [ -n "$w" ] && [ -n "$h" ] || { echo "no signal / timings; run setup first" >&2; exit 1; }
+        echo "capturing $n frames of ${w}x${h} NV12 from $VIDEO to /tmp/hdmirx.nv12"
+        v4l2-ctl -d "$VIDEO" --set-fmt-video=width="$w",height="$h",pixelformat=NV12 \
+                 --stream-mmap=4 --stream-count="$n" --stream-to=/tmp/hdmirx.nv12 ;;
+    setup|*)
+        edid="${1:-}"; [ "$edid" = setup ] && edid=""; edid="${edid:-$EDID_DEFAULT}"
+        echo "loading EDID $edid into $SUBDEV"
+        v4l2-ctl -d "$SUBDEV" --set-edid=file="$edid" --fix-edid-checksums || exit 1
+        sleep 2
+        echo "incoming timings:"
+        v4l2-ctl -d "$SUBDEV" --query-dv-timings || { echo "no HDMI signal detected yet"; exit 0; }
+        v4l2-ctl -d "$SUBDEV" --set-dv-bt-timings query
+        w="$(v4l2-ctl -d "$SUBDEV" --get-dv-timings | sed -n 's/.*Active width: *//p')"
+        h="$(v4l2-ctl -d "$SUBDEV" --get-dv-timings | sed -n 's/.*Active height: *//p')"
+        echo "configuring rkisp1 pipeline for ${w}x${h} UYVY"
+        media-ctl -d "$MEDIA" --set-v4l2 "'$SDNAME':0[fmt:UYVY8_2X8/${w}x${h}]" 2>/dev/null || true
+        media-ctl -d "$MEDIA" --set-v4l2 "'rkisp1-isp-subdev':0[fmt:UYVY8_2X8/${w}x${h}]"
+        media-ctl -d "$MEDIA" --set-v4l2 "'rkisp1-isp-subdev':0[crop:(0,0)/${w}x${h}]"
+        media-ctl -d "$MEDIA" --set-v4l2 "'rkisp1-isp-subdev':2[fmt:YUYV8_2X8/${w}x${h}]"
+        media-ctl -d "$MEDIA" --set-v4l2 "'rkisp1-isp-subdev':2[crop:(0,0)/${w}x${h}]"
+        v4l2-ctl -d "$VIDEO" --set-fmt-video=width="$w",height="$h",pixelformat=NV12
+        echo "ready: $VIDEO (${w}x${h}); e.g.  hdmirx-setup capture 30"
+        echo "       ffmpeg -f v4l2 -input_format nv12 -video_size ${w}x${h} -i $VIDEO -c:v libx264 -preset ultrafast out.mp4" ;;
+esac

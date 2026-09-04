@@ -1,0 +1,7 @@
+# Firmware files fetched at build time into /lib/firmware (url  sha256  path).
+# Source: linux-firmware.git tag 20240811 (kernel.org cgit "plain" endpoint).
+# Realtek RTL8822CE (M.2 Key-E module): PCIe Wi-Fi (rtw88) and USB Bluetooth (btrtl).
+https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/rtw88/rtw8822c_fw.bin?h=20240811      3deecb31210986d98cdbfb000391e08d602a6eee4ffc883969faa2b907ab03ba  rtw88/rtw8822c_fw.bin
+https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/rtw88/rtw8822c_wow_fw.bin?h=20240811  6717fc6ff426a74571ac4f04cd9698fb2f356012c05c58aa64cf21ceb6b958a2  rtw88/rtw8822c_wow_fw.bin
+https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/rtl_bt/rtl8822cu_fw.bin?h=20240811    660a105e2f6ace3831260003d321b50d9cb259768b0016eb7fa5750c1f90817b  rtl_bt/rtl8822cu_fw.bin
+https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/rtl_bt/rtl8822cu_config.bin?h=20240811 6c28a3f07c6a30ed208c4b64862a23f02b7d93543ea980edd24df16bab45095f  rtl_bt/rtl8822cu_config.bin

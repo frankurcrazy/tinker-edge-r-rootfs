@@ -1,0 +1,13 @@
+[Unit]
+Description=RK3399Pro NPU transfer proxy (RKNN API <-> NPU over USB)
+After=npu-firmware.service
+Requires=npu-firmware.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/npu_transfer_proxy
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

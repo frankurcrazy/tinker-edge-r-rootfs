@@ -1,0 +1,19 @@
+# USB gadget Ethernet (NCM/ECM/RNDIS function bound to the Type-C port).
+# The board is 192.168.7.2 and hands out 192.168.7.100+ to the attached host, so
+# `ssh tinker@192.168.7.2` works right after plugging the Type-C cable into a PC.
+[Match]
+Name=usb0 usb1
+
+[Network]
+Address=192.168.7.2/24
+DHCPServer=yes
+IPForward=no
+LinkLocalAddressing=ipv6
+MulticastDNS=yes
+ConfigureWithoutCarrier=yes
+
+[DHCPServer]
+PoolOffset=100
+PoolSize=20
+EmitDNS=no
+EmitRouter=no

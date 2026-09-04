@@ -1,0 +1,76 @@
+#!/bin/bash
+# Push the NPU firmware (loader, uboot, trust, boot) into the RK3399Pro NPU over
+# USB using Rockchip's maskrom protocol.  Derived from ASUS's /usr/bin/npu_upgrade
+# (TinkerBoard2/debian, Apache-2.0); paths and logging kept compatible.
+#
+#   npu_upgrade MiniLoaderAll.bin uboot.img trust.img boot.img
+PROGRAM=${0##*/}
+DIR="${NPU_FW_DIR:-/usr/share/npu_fw}"
+UPGRADE_TOOL=/usr/bin/upgrade_tool
+POWERCTRL=/usr/bin/npu_powerctrl
+LOGF=${NPU_LOG:-/tmp/npu.log}
+UBOOT_ADDR=0x20000
+TRUST_ADDR=0x20800
+BOOT_ADDR=0x21000
+
+if [ $# -ne 4 ]; then
+	echo "Usage: $PROGRAM loader uboot trust boot   (file names inside $DIR)"
+	exit 2
+fi
+LOADER=$DIR/$1; UBOOT=$DIR/$2; TRUST=$DIR/$3; BOOT=$DIR/$4
+for f in "$UPGRADE_TOOL" "$POWERCTRL" "$LOADER" "$UBOOT" "$TRUST" "$BOOT"; do
+	[ -f "$f" ] || { echo "$f does not exist" >&2; exit 1; }
+done
+log() { echo "$(date '+%F %T') $*" >> "$LOGF"; }
+
+# reset the NPU into maskrom mode (GPIO reset + reference clock, sysfs/debugfs)
+reset_npu() {
+	$POWERCTRL -i
+	sleep 0.1
+	$POWERCTRL -o
+	sleep 1
+}
+
+wait_device() {
+	log 'waiting for maskrom device...'
+	local i=0
+	while [ $i -lt 10 ]; do
+		if $UPGRADE_TOOL ld > /dev/null 2>&1; then
+			sleep 0.1; log 'device is ready'; return 0
+		fi
+		i=$((i+1)); sleep 0.1
+		if [ $i -eq 5 ]; then
+			$POWERCTRL -o; sleep 3; log 'reset npu to retry'
+		fi
+	done
+	log 'failed to wait device'; return 1
+}
+
+download() {
+	log 'download loader'
+	$UPGRADE_TOOL db "$LOADER" > /dev/null || { log 'failed to download loader'; return 1; }
+	sleep 1
+	$UPGRADE_TOOL td > /dev/null || { log 'failed to test device (loader not running)'; return 1; }
+	log 'write uboot';  $UPGRADE_TOOL wl $UBOOT_ADDR "$UBOOT" > /dev/null || { log 'failed to write uboot'; return 1; }
+	log 'write trust';  $UPGRADE_TOOL wl $TRUST_ADDR "$TRUST" > /dev/null || { log 'failed to write trust'; return 1; }
+	log 'write boot';   $UPGRADE_TOOL wl $BOOT_ADDR  "$BOOT"  > /dev/null || { log 'failed to write boot'; return 1; }
+	return 0
+}
+
+: > "$LOGF"
+log "npu_upgrade start ($DIR)"
+reset_npu
+if ! wait_device; then
+	reset_npu
+	wait_device || exit 1
+fi
+if ! download; then
+	log 'retrying download after reset'
+	reset_npu
+	wait_device || exit 1
+	download || exit 1
+fi
+log 'run system'
+$UPGRADE_TOOL rs $UBOOT_ADDR $TRUST_ADDR $BOOT_ADDR "$UBOOT" "$TRUST" "$BOOT" > /dev/null || { log 'failed to run system'; exit 1; }
+log 'run system ok'
+exit 0

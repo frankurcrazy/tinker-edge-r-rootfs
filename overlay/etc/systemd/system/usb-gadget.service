@@ -1,0 +1,16 @@
+[Unit]
+Description=USB composite gadget on the Type-C port (configfs)
+Documentation=file:/etc/default/usb-gadget
+After=sys-kernel-config.mount systemd-udevd.service
+Requires=sys-kernel-config.mount
+Before=systemd-networkd.service
+ConditionPathExists=/sys/class/udc
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/usb-gadget-setup start
+ExecStop=/usr/local/sbin/usb-gadget-setup stop
+
+[Install]
+WantedBy=multi-user.target

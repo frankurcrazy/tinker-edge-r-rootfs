@@ -1,0 +1,34 @@
+#!/bin/bash
+# Push the NPU firmware set into the RK3399Pro NPU (the NPU has no storage and
+# boots from RAM every power cycle).  Mirrors ASUS's /usr/bin/npu-image.sh:
+#   npu_powerctrl (GPIO reset via sysfs + reference clock via debugfs)
+#   upgrade_tool  (Rockchip maskrom protocol over USB: loader, uboot, trust, boot)
+# Firmware: /usr/share/npu_fw (USB-mode set from airockchip/RK3399Pro_npu).
+set -u
+FW=/usr/share/npu_fw
+LOG=/var/log/npu-firmware.log
+
+if [ -e /sys/devices/platform/f8000000.pcie/pcie_reset_ep ]; then
+    echo "NPU appears to be on PCIe; this board uses the USB set - refusing" >&2
+    exit 1
+fi
+for f in MiniLoaderAll.bin uboot.img trust.img boot.img; do
+    [ -f "$FW/$f" ] || { echo "missing $FW/$f" >&2; exit 1; }
+done
+mountpoint -q /sys/kernel/debug || mount -t debugfs none /sys/kernel/debug || true
+
+echo "loading NPU firmware from $FW (log: $LOG, details in /tmp/npu.log)"
+start=$(date +%s)
+if /usr/bin/npu_upgrade MiniLoaderAll.bin uboot.img trust.img boot.img >> "$LOG" 2>&1; then
+    echo "NPU firmware loaded in $(( $(date +%s) - start ))s"
+else
+    echo "npu_upgrade failed, see $LOG and /tmp/npu.log" >&2
+    exit 1
+fi
+# give the NPU's own Linux a moment to enumerate its USB device
+for i in $(seq 1 30); do
+    if lsusb 2>/dev/null | grep -q '2207:'; then break; fi
+    sleep 1
+done
+lsusb 2>/dev/null | grep '2207:' || echo "warning: no Rockchip USB device visible yet" >&2
+exit 0

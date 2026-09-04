@@ -1,0 +1,139 @@
+#!/bin/bash
+# Create / tear down the configfs USB composite gadget on the Type-C port.
+#   usb-gadget-setup start|stop|status
+# Configuration: /etc/default/usb-gadget
+set -euo pipefail
+
+CONF=/etc/default/usb-gadget
+[ -r "$CONF" ] && . "$CONF"
+GADGET_FUNCTIONS="${GADGET_FUNCTIONS:-ncm acm}"
+GADGET_VID="${GADGET_VID:-0x1d6b}"; GADGET_PID="${GADGET_PID:-0x0104}"
+GADGET_MANUFACTURER="${GADGET_MANUFACTURER:-ASUS}"; GADGET_PRODUCT="${GADGET_PRODUCT:-Tinker Edge R}"
+GADGET_MAX_POWER="${GADGET_MAX_POWER:-500}"
+GADGET_UDC="${GADGET_UDC:-}"
+
+CFS=/sys/kernel/config/usb_gadget
+G="$CFS/tinker"
+
+soc_serial() {
+    local s
+    s="$(tr -d '\0' < /proc/device-tree/serial-number 2>/dev/null || true)"
+    [ -n "$s" ] || s="$(cut -c1-16 /etc/machine-id 2>/dev/null || echo 0123456789abcdef)"
+    echo "$s"
+}
+mac_from_serial() {   # $1 = discriminator byte, locally administered unicast MAC
+    local h; h="$(printf '%s%s' "$(soc_serial)" "$1" | sha256sum | cut -c1-10)"
+    printf '02:%s:%s:%s:%s:%s\n' "${h:0:2}" "${h:2:2}" "${h:4:2}" "${h:6:2}" "${h:8:2}"
+}
+
+start() {
+    mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
+    [ -d "$CFS" ] || { echo "usb_gadget configfs not available (CONFIG_USB_CONFIGFS?)" >&2; exit 1; }
+    if [ -d "$G" ]; then stop; fi
+    local udc="$GADGET_UDC"
+    if [ -z "$udc" ]; then udc="$(ls /sys/class/udc | head -1)"; fi
+    [ -n "$udc" ] && [ -e "/sys/class/udc/$udc" ] || { echo "no UDC found (dwc3 dual-role not active?)" >&2; exit 1; }
+
+    mkdir -p "$G"; cd "$G"
+    echo "$GADGET_VID" > idVendor; echo "$GADGET_PID" > idProduct
+    echo 0x0320 > bcdUSB          # USB 3.2 capable descriptor (dwc3 is SuperSpeed)
+    echo 0x0100 > bcdDevice
+    echo 0xEF > bDeviceClass; echo 0x02 > bDeviceSubClass; echo 0x01 > bDeviceProtocol   # IAD for composite
+    mkdir -p strings/0x409
+    echo "${GADGET_SERIAL:-$(soc_serial)}" > strings/0x409/serialnumber
+    echo "$GADGET_MANUFACTURER" > strings/0x409/manufacturer
+    echo "$GADGET_PRODUCT" > strings/0x409/product
+    mkdir -p configs/c.1/strings/0x409
+    echo "$GADGET_FUNCTIONS" > configs/c.1/strings/0x409/configuration
+    echo "$GADGET_MAX_POWER" > configs/c.1/MaxPower
+    echo 0xC0 > configs/c.1/bmAttributes    # self powered
+
+    local f n=0
+    for f in $GADGET_FUNCTIONS; do
+        case "$f" in
+            ncm|ecm|eem|rndis)
+                mkdir -p "functions/$f.usb0"
+                echo "${GADGET_DEV_MAC:-$(mac_from_serial 1)}"  > "functions/$f.usb0/dev_addr"
+                echo "${GADGET_HOST_MAC:-$(mac_from_serial 2)}" > "functions/$f.usb0/host_addr"
+                if [ "$f" = rndis ]; then
+                    # Windows needs the RNDIS class codes + MS OS descriptors
+                    echo RNDIS > functions/rndis.usb0/os_desc/interface.rndis/compatible_id
+                    echo 5162001 > functions/rndis.usb0/os_desc/interface.rndis/sub_compatible_id
+                    echo 1 > os_desc/use; echo 0xcd > os_desc/b_vendor_code; echo MSFT100 > os_desc/qw_sign
+                    ln -sf configs/c.1 os_desc
+                fi
+                ln -sf "functions/$f.usb0" configs/c.1/ ;;
+            acm)
+                mkdir -p functions/acm.GS0; ln -sf functions/acm.GS0 configs/c.1/ ;;
+            mass_storage)
+                mkdir -p functions/mass_storage.0
+                echo "${GADGET_MS_REMOVABLE:-1}" > functions/mass_storage.0/lun.0/removable
+                echo "${GADGET_MS_RO:-0}" > functions/mass_storage.0/lun.0/ro
+                [ -n "${GADGET_MS_FILE:-}" ] && echo "$GADGET_MS_FILE" > functions/mass_storage.0/lun.0/file
+                ln -sf functions/mass_storage.0 configs/c.1/ ;;
+            hid)
+                mkdir -p functions/hid.usb0
+                echo 1 > functions/hid.usb0/protocol; echo 1 > functions/hid.usb0/subclass
+                echo 8 > functions/hid.usb0/report_length
+                # standard boot keyboard report descriptor
+                printf '\x05\x01\x09\x06\xa1\x01\x05\x07\x19\xe0\x29\xe7\x15\x00\x25\x01\x75\x01\x95\x08\x81\x02\x95\x01\x75\x08\x81\x03\x95\x05\x75\x01\x05\x08\x19\x01\x29\x05\x91\x02\x95\x01\x75\x03\x91\x03\x95\x06\x75\x08\x15\x00\x25\x65\x05\x07\x19\x00\x29\x65\x81\x00\xc0' > functions/hid.usb0/report_desc
+                ln -sf functions/hid.usb0 configs/c.1/ ;;
+            uac2)
+                mkdir -p functions/uac2.0
+                echo 48000 > functions/uac2.0/c_srate; echo 48000 > functions/uac2.0/p_srate
+                ln -sf functions/uac2.0 configs/c.1/ ;;
+            midi)
+                mkdir -p functions/midi.0; ln -sf functions/midi.0 configs/c.1/ ;;
+            ffs)
+                mkdir -p functions/ffs.tinker /dev/usb-ffs/tinker
+                mountpoint -q /dev/usb-ffs/tinker || mount -t functionfs tinker /dev/usb-ffs/tinker
+                ln -sf functions/ffs.tinker configs/c.1/ ;;
+            *) echo "unknown gadget function: $f" >&2 ;;
+        esac
+        n=$((n+1))
+    done
+    [ "$n" -gt 0 ] || { echo "no functions configured" >&2; exit 1; }
+    # ffs endpoints must be opened by the userspace daemon before binding
+    if echo "$GADGET_FUNCTIONS" | grep -qw ffs; then
+        echo "ffs function configured: bind manually with 'echo $udc > $G/UDC' once the daemon runs"
+    else
+        echo "$udc" > UDC
+    fi
+    echo "gadget bound to $udc: $GADGET_FUNCTIONS"
+}
+
+stop() {
+    [ -d "$G" ] || return 0
+    cd "$G"
+    echo "" > UDC 2>/dev/null || true
+    find configs -type l -delete 2>/dev/null || true
+    rm -f os_desc/c.1 2>/dev/null || true
+    for d in configs/*/strings/*; do [ -d "$d" ] && rmdir "$d"; done
+    for d in configs/*; do [ -d "$d" ] && rmdir "$d"; done
+    for d in functions/*; do [ -d "$d" ] && rmdir "$d"; done
+    for d in strings/*; do [ -d "$d" ] && rmdir "$d"; done
+    cd /; rmdir "$G"
+    mountpoint -q /dev/usb-ffs/tinker && umount /dev/usb-ffs/tinker || true
+    echo "gadget removed"
+}
+
+status() {
+    if [ -d "$G" ]; then
+        echo "gadget: $(cat "$G/strings/0x409/product") functions: $(ls "$G/configs/c.1" | grep -v strings | tr '\n' ' ')"
+        echo "UDC: $(cat "$G/UDC" 2>/dev/null || echo unbound)  state: $(cat /sys/class/udc/*/state 2>/dev/null | head -1)"
+    else
+        echo "gadget: not configured"
+    fi
+    for p in /sys/class/typec/port*; do
+        [ -d "$p" ] || continue
+        echo "typec $(basename "$p"): data_role=$(cat "$p/data_role") power_role=$(cat "$p/power_role") orientation=$(cat "$p/orientation" 2>/dev/null || echo ?)"
+    done
+}
+
+case "${1:-status}" in
+    start) start ;;
+    stop) stop ;;
+    restart) stop; start ;;
+    status) status ;;
+    *) echo "usage: $0 start|stop|restart|status" >&2; exit 2 ;;
+esac

@@ -1,0 +1,26 @@
+# Convenience tools for NPU / camera / gadget work (still small; drop lines to slim down).
+v4l-utils
+media-ctl
+ffmpeg
+gstreamer1.0-tools
+gstreamer1.0-plugins-base
+gstreamer1.0-plugins-good
+gstreamer1.0-plugins-bad
+alsa-utils
+git
+build-essential
+pkg-config
+cmake
+python3-numpy
+python3-psutil
+python3-ruamel.yaml
+python3-opencv
+python3-pil
+tmux
+screen
+picocom
+socat
+net-tools
+nftables
+avahi-daemon
+libnss-mdns

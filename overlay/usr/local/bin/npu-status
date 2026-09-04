@@ -1,0 +1,12 @@
+#!/bin/bash
+# Quick health check of the NPU stack.
+echo "== services"
+systemctl --no-pager --plain status npu-firmware.service npu-transfer-proxy.service 2>/dev/null | grep -E 'service|Active'
+echo "== USB devices (Rockchip vendor 2207)"
+lsusb | grep -i '2207:' || echo "(none)"
+echo "== npu_transfer_proxy devices"
+timeout 10 npu_transfer_proxy devices 2>&1 || echo "(proxy not responding)"
+echo "== firmware"
+ls -la /usr/share/npu_fw
+echo "== last log lines"
+tail -n 5 /tmp/npu.log 2>/dev/null

@@ -1,0 +1,34 @@
+# Configuration for usb-gadget.service (/usr/local/sbin/usb-gadget-setup).
+# The composite gadget is created through configfs and bound to the Type-C
+# controller.  Edit and `systemctl restart usb-gadget` to apply.
+
+# Space separated list of functions.  Available (all built into the kernel):
+#   ncm ecm eem rndis  - USB Ethernet (usb0);  ncm is the modern choice for
+#                        Linux/macOS/Windows 11, rndis for older Windows
+#   acm                - USB serial console (ttyGS0 with a login prompt)
+#   mass_storage       - expose GADGET_MS_FILE (an image file or block device)
+#   hid                - keyboard HID (report descriptor for a boot keyboard)
+#   uac2               - USB audio (2ch 48 kHz)
+#   midi               - USB MIDI
+#   ffs                - FunctionFS mount point at /dev/usb-ffs/tinker (for adbd etc.)
+GADGET_FUNCTIONS="ncm acm"
+
+# USB device identity
+GADGET_VID=0x1d6b          # Linux Foundation
+GADGET_PID=0x0104          # Multifunction Composite Gadget
+GADGET_MANUFACTURER="ASUS"
+GADGET_PRODUCT="Tinker Edge R"
+GADGET_SERIAL=""           # empty: derived from the SoC serial number
+GADGET_MAX_POWER=500
+
+# Ethernet MAC addresses (empty: derived from the SoC serial number)
+GADGET_DEV_MAC=""
+GADGET_HOST_MAC=""
+
+# mass_storage function
+GADGET_MS_FILE=""
+GADGET_MS_REMOVABLE=1
+GADGET_MS_RO=0
+
+# UDC to bind to (empty: first available; the Type-C port is fe800000.dwc3)
+GADGET_UDC="fe800000.dwc3"

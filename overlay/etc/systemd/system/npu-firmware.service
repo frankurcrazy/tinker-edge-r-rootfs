@@ -1,0 +1,18 @@
+[Unit]
+Description=Load the RK3399Pro NPU firmware over USB (maskrom download)
+Documentation=file:/usr/share/doc/tinker-edge-r/npu.md
+DefaultDependencies=no
+After=sysinit.target sys-kernel-debug.mount systemd-udev-settle.service
+Wants=sys-kernel-debug.mount
+Before=npu-transfer-proxy.service
+ConditionPathExists=/usr/share/npu_fw/boot.img
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=120
+ExecStart=/usr/local/sbin/npu-firmware-load
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

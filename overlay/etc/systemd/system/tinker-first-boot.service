@@ -1,0 +1,16 @@
+[Unit]
+Description=Tinker Edge R first boot: grow rootfs, regenerate host keys and machine-id
+DefaultDependencies=no
+Conflicts=shutdown.target
+After=systemd-remount-fs.service
+Before=systemd-sysusers.service sysinit.target ssh.service
+ConditionPathExists=!/var/lib/tinker-first-boot.done
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/tinker-first-boot
+StandardOutput=journal+console
+
+[Install]
+WantedBy=sysinit.target
