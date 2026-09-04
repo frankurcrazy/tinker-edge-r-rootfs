@@ -152,6 +152,8 @@ chr passwd -l root >/dev/null
 # ---- 4. overlay (config files, services, helper scripts) -------------------------------
 log "applying overlay"
 cp -a "$HERE/overlay/." "$ROOT/"
+# cp -a keeps the git checkout's uid; everything system-wide must belong to root
+( cd "$HERE/overlay" && find . -mindepth 1 -print0 ) | ( cd "$ROOT" && xargs -0 chown -h root:root )
 chmod 755 "$ROOT"/usr/local/sbin/* "$ROOT"/usr/local/bin/* 2>/dev/null || true
 
 # ---- 5. kernel modules -------------------------------------------------------------
@@ -160,6 +162,7 @@ if [ -n "$KERNEL_OUT" ] && [ -d "$KERNEL_OUT/modules/lib/modules" ]; then
     log "installing kernel modules $REL"
     mkdir -p "$ROOT/lib/modules"
     cp -a "$KERNEL_OUT/modules/lib/modules/." "$ROOT/lib/modules/"
+    chown -R root:root "$ROOT/lib/modules"
     chr depmod -a "$REL"
 else
     log "no kernel modules given (--kernel-out); skipping"
@@ -189,6 +192,7 @@ python3 "$HERE/tools/mkedid.py" --profile 720p60 -o "$ROOT/usr/share/hdmirx/edid
 mkdir -p "$ROOT/usr/share/doc/tinker-edge-r"
 if [ -n "$DOCS_DIR" ] && [ -d "$DOCS_DIR" ]; then
     cp -f "$DOCS_DIR"/*.md "$ROOT/usr/share/doc/tinker-edge-r/" 2>/dev/null || true
+    chown -R root:root "$ROOT/usr/share/doc/tinker-edge-r"
 fi
 cat > "$ROOT/etc/motd" <<EOF
 
