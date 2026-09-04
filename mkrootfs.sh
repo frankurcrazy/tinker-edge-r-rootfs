@@ -248,9 +248,9 @@ chr dpkg-query -W -f='${Package}\t${Version}\n' > "$OUTDIR/packages.txt" 2>/dev/
 {
     echo "suite/arch:   $SUITE/$ARCH ($MIRROR)"
     echo "built:        $(date -u +%FT%TZ)"
-    echo "rootfs repo:  $(git -C "$HERE" rev-parse HEAD 2>/dev/null || echo unknown)"
+    echo "rootfs repo:  $(git -c safe.directory='*' -C "$HERE" rev-parse HEAD 2>/dev/null || echo unknown)"
     echo "kernel:       ${REL:-none}"
-    echo "npu src:      ${NPU_SRC:-none} ($(git -C "$NPU_SRC" rev-parse --short HEAD 2>/dev/null || echo ?))"
+    echo "npu src:      ${NPU_SRC:-none} ($(git -c safe.directory='*' -C "$NPU_SRC" rev-parse --short HEAD 2>/dev/null || echo ?))"
     echo "user:         $USER_ (password set at build time; sudo without password)"
     echo "packages:     $(wc -l < "$OUTDIR/packages.txt")"
     echo "size:         $(du -sxh "$ROOT" | cut -f1)"
