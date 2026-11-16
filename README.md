@@ -33,6 +33,8 @@ This repository is one piece of a set that a `repo` manifest ties together:
   * `tinker-eth-mac.service` - gives `eth0` the board's own MAC address from the
     EEPROM on I2C1 (the one the stock image uses) before networkd starts.
   * `hdmirx-setup` - EDID load + ISP pipeline configuration for the X1301.
+  * `60-rockchip-media.rules` - the hardware codec (MPP), RGA, IEP and the DMA-BUF
+    heaps for the `video` group.
 * Kernel modules from the kernel build (`--kernel-out`), Realtek RTL8822CE Wi-Fi
   and Bluetooth firmware fetched from linux-firmware (`config/firmware.txt`,
   sha256-pinned), NPU firmware/proxy/API from the `RK3399Pro_npu` checkout
