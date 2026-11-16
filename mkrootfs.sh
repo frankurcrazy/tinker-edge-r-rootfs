@@ -131,8 +131,11 @@ EOF
 pkgs() { grep -hvE '^\s*(#|$)' "$@" | tr '\n' ' '; }
 BASE_PKGS="$(pkgs "$HERE/config/packages-base.txt")"
 EXTRA_PKGS="$(pkgs "$HERE/config/packages-extra.txt") $EXTRA_PACKAGES"
-log "apt update + install"
+log "apt update + full-upgrade + install"
 chr_apt update
+# debootstrap installs the jammy release versions; bring everything it put in
+# (libc, systemd, apt, ...) up to the current -updates/-security packages.
+chr_apt full-upgrade
 # shellcheck disable=SC2086
 chr_apt install $BASE_PKGS
 # shellcheck disable=SC2086
