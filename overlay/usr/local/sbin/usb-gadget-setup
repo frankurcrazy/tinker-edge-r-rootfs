@@ -30,9 +30,15 @@ start() {
     mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
     [ -d "$CFS" ] || { echo "usb_gadget configfs not available (CONFIG_USB_CONFIGFS?)" >&2; exit 1; }
     if [ -d "$G" ]; then stop; fi
-    local udc="$GADGET_UDC"
-    if [ -z "$udc" ]; then udc="$(ls /sys/class/udc | head -1)"; fi
-    [ -n "$udc" ] && [ -e "/sys/class/udc/$udc" ] || { echo "no UDC found (dwc3 dual-role not active?)" >&2; exit 1; }
+    # The dwc3 role switch registers the UDC a few seconds into the boot,
+    # usually after this unit has started: wait for it instead of failing.
+    local udc="$GADGET_UDC" i
+    for i in $(seq 1 60); do
+        [ -n "$GADGET_UDC" ] || udc="$(ls /sys/class/udc 2>/dev/null | head -1)"
+        if [ -n "$udc" ] && [ -e "/sys/class/udc/$udc" ]; then break; fi
+        sleep 0.5
+    done
+    [ -n "$udc" ] && [ -e "/sys/class/udc/$udc" ] || { echo "no UDC after 30 s (dwc3 dual-role not active?)" >&2; exit 1; }
 
     mkdir -p "$G"; cd "$G"
     echo "$GADGET_VID" > idVendor; echo "$GADGET_PID" > idProduct
