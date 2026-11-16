@@ -19,17 +19,18 @@ done=1
 if [[ "$rootdev" =~ ^(/dev/mmcblk[0-9]+)p([0-9]+)$ ]]; then
     disk="${BASH_REMATCH[1]}"; part="${BASH_REMATCH[2]}"
     echo "growing $rootdev on $disk"
-    # The image's root filesystem is close to full until it is grown: keep
-    # growpart's temporary files on /run (tmpfs).
+    # growpart's temporary files go to tmpfs, so growing works even on a full
+    # root filesystem.
     export TMPDIR=/run
     ok=1
     if command -v growpart >/dev/null; then
+        # growpart keeps the partition's GUID: the kernel and fstab find the
+        # root by PARTUUID.
         growpart "$disk" "$part"
         [ $? -le 1 ] || ok=0            # 1 = NOCHANGE: it already fills the disk
     else
-        # move the backup GPT to the end and extend the last partition
-        sgdisk -e "$disk" >/dev/null 2>&1 &&
-            sgdisk -d "$part" -n "$part:0:0" -c "$part:rootfs" -t "$part:8305" "$disk" >/dev/null 2>&1 || ok=0
+        echo "growpart (cloud-guest-utils) is missing" >&2
+        ok=0
     fi
     partx -u "$disk" 2>/dev/null || true
     if [ "$ok" = 1 ] && resize2fs "$rootdev"; then
