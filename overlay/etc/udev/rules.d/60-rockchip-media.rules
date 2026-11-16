@@ -1,0 +1,8 @@
+# Hardware codec and 2D blitter for the "video" group (the default user is in
+# it): MPP (VDPU2/VEPU2/RKVDEC through /dev/mpp_service), RGA, IEP, and the
+# DMA-BUF heaps MPP allocates its frame buffers from.  Without these rules only
+# root could use the hardware codec.
+KERNEL=="mpp_service", MODE="0660", GROUP="video"
+KERNEL=="rga", MODE="0660", GROUP="video"
+KERNEL=="iep", MODE="0660", GROUP="video"
+SUBSYSTEM=="dma_heap", MODE="0660", GROUP="video"

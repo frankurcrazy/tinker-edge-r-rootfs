@@ -4,17 +4,43 @@
 set -u
 STAMP=/var/lib/tinker-first-boot.done
 
+# The root partition.  With root=PARTUUID=... and no initramfs the kernel
+# mounts it as /dev/root, a name that matches no partition: resolve it through
+# the root mount's major:minor instead.
 rootdev="$(findmnt -n -o SOURCE / 2>/dev/null)"
-if [ -n "$rootdev" ] && [[ "$rootdev" =~ (.*mmcblk[0-9]+)p([0-9]+)$ ]]; then
+if [ "$rootdev" = /dev/root ] || [ ! -b "$rootdev" ]; then
+    majmin="$(mountpoint -d / 2>/dev/null)"
+    if [ -n "$majmin" ] && [ -e "/sys/dev/block/$majmin" ]; then
+        rootdev="/dev/$(basename "$(readlink -f "/sys/dev/block/$majmin")")"
+    fi
+fi
+
+done=1
+if [[ "$rootdev" =~ ^(/dev/mmcblk[0-9]+)p([0-9]+)$ ]]; then
     disk="${BASH_REMATCH[1]}"; part="${BASH_REMATCH[2]}"
     echo "growing $rootdev on $disk"
+    # growpart's temporary files go to tmpfs, so growing works even on a full
+    # root filesystem.
+    export TMPDIR=/run
+    ok=1
     if command -v growpart >/dev/null; then
-        growpart "$disk" "$part" && partx -u "$disk" 2>/dev/null || true
+        # growpart keeps the partition's GUID: the kernel and fstab find the
+        # root by PARTUUID.
+        growpart "$disk" "$part"
+        [ $? -le 1 ] || ok=0            # 1 = NOCHANGE: it already fills the disk
     else
-        # move the backup GPT to the end and extend the last partition
-        sgdisk -e "$disk" >/dev/null 2>&1 && sgdisk -d "$part" -n "$part:0:0" -c "$part:rootfs" -t "$part:8305" "$disk" >/dev/null 2>&1 && partx -u "$disk" 2>/dev/null || true
+        echo "growpart (cloud-guest-utils) is missing" >&2
+        ok=0
     fi
-    resize2fs "$rootdev" 2>&1 | tail -1
+    partx -u "$disk" 2>/dev/null || true
+    if [ "$ok" = 1 ] && resize2fs "$rootdev"; then
+        echo "root filesystem grown: $(df -h --output=size / | tail -1 | tr -d ' ')"
+    else
+        echo "growing $rootdev failed; trying again at the next boot" >&2
+        done=0
+    fi
+else
+    echo "root device '${rootdev:-?}' is not an mmcblk partition; not growing it" >&2
 fi
 
 if [ ! -s /etc/machine-id ]; then
@@ -23,5 +49,7 @@ fi
 if ! ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; then
     ssh-keygen -A >/dev/null 2>&1 && echo "ssh host keys generated"
 fi
-mkdir -p "$(dirname "$STAMP")"; date -u +%FT%TZ > "$STAMP"
+if [ "$done" = 1 ]; then
+    mkdir -p "$(dirname "$STAMP")"; date -u +%FT%TZ > "$STAMP"
+fi
 exit 0

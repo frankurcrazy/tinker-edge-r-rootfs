@@ -25,10 +25,18 @@ This repository is one piece of a set that a `repo` manifest ties together:
   * `npu-firmware.service` / `npu-transfer-proxy.service` - NPU bring-up at boot
     (`npu-status` to check), see `npu/PROVENANCE.md`.
   * `usb-gadget.service` - configfs composite gadget on the Type-C port,
-    configured in `/etc/default/usb-gadget` (default: NCM Ethernet + ACM serial).
+    configured in `/etc/default/usb-gadget` (default: NCM Ethernet + ACM serial),
+    bound to the first UDC (`fe800000.usb` under the 6.1 kernel).  udev starts it
+    when the dwc3 role switch registers the UDC (`81-usb-gadget-udc.rules`).  The
+    USB serial and `usb0` MACs come from the SoC serial (`/proc/cpuinfo`).
   * `tinker-first-boot.service` - grows the root partition, regenerates SSH host
-    keys and the machine-id on the first boot.
+    keys and the machine-id on the first boot, after udev (growpart runs `udevadm
+    settle`) and before sshd.  It retries at the next boot if growing fails.
+  * `tinker-eth-mac.service` - gives `eth0` the board's own MAC address from the
+    EEPROM on I2C1 (the one the stock image uses) before networkd starts.
   * `hdmirx-setup` - EDID load + ISP pipeline configuration for the X1301.
+  * `60-rockchip-media.rules` - the hardware codec (MPP), RGA, IEP and the DMA-BUF
+    heaps for the `video` group.
 * Kernel modules from the kernel build (`--kernel-out`), Realtek RTL8822CE Wi-Fi
   and Bluetooth firmware fetched from linux-firmware (`config/firmware.txt`,
   sha256-pinned), NPU firmware/proxy/API from the `RK3399Pro_npu` checkout

@@ -1,0 +1,4 @@
+# Set up the configfs gadget (usb-gadget.service) once the dwc3 role switch has
+# registered the UDC.  When the port later changes role, the kernel re-binds the
+# configured gadget to the UDC by itself.
+ACTION=="add", SUBSYSTEM=="udc", TAG+="systemd", ENV{SYSTEMD_WANTS}+="usb-gadget.service"

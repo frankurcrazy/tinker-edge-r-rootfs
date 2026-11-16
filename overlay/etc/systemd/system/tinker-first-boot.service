@@ -1,9 +1,10 @@
 [Unit]
 Description=Tinker Edge R first boot: grow rootfs, regenerate host keys and machine-id
-DefaultDependencies=no
-Conflicts=shutdown.target
-After=systemd-remount-fs.service
-Before=systemd-sysusers.service sysinit.target ssh.service
+# A normal service, after udev and all local mounts: growpart runs "udevadm
+# settle".  Ordered before systemd-sysusers.service (which udevd waits for) it
+# held udevd back for growpart's 120 s settle timeout, and /boot's device job
+# timed out first: the first boot ended in emergency mode.
+Before=ssh.service
 ConditionPathExists=!/var/lib/tinker-first-boot.done
 
 [Service]
@@ -13,4 +14,4 @@ ExecStart=/usr/local/sbin/tinker-first-boot
 StandardOutput=journal+console
 
 [Install]
-WantedBy=sysinit.target
+WantedBy=multi-user.target

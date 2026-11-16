@@ -1,0 +1,38 @@
+#!/bin/bash
+# Give eth0 the board's own MAC address.  ASUS stores it in the first six
+# bytes of the 24C08 EEPROM on I2C1 (0x50), which the stock image uses; U-Boot
+# hands the kernel a locally administered address derived from the CPU id
+# instead, so without this the board joins the LAN under a different MAC.
+#   tinker-eth-mac [interface]      (default eth0)
+set -u
+EEPROM=/sys/bus/i2c/devices/1-0050/eeprom
+IFACE=${1:-eth0}
+
+for _ in $(seq 1 20); do [ -e "/sys/class/net/$IFACE" ] && break; sleep 0.5; done
+[ -e "/sys/class/net/$IFACE" ] || { echo "no $IFACE; nothing to do" >&2; exit 0; }
+for _ in $(seq 1 20); do [ -r "$EEPROM" ] && break; sleep 0.5; done
+[ -r "$EEPROM" ] || { echo "no EEPROM at $EEPROM; keeping the current MAC" >&2; exit 0; }
+
+mac=$(head -c 6 "$EEPROM" | od -An -tx1 | tr -s ' ' | sed 's/^ //; s/ $//; s/ /:/g')
+case "$mac" in
+    ""|00:00:00:00:00:00|ff:ff:ff:ff:ff:ff)
+        echo "EEPROM holds no MAC ('$mac'); keeping the current one" >&2; exit 0 ;;
+esac
+if [ $((16#${mac%%:*} & 1)) -ne 0 ]; then
+    echo "EEPROM MAC $mac is a multicast address; keeping the current one" >&2; exit 0
+fi
+
+cur=$(cat "/sys/class/net/$IFACE/address" 2>/dev/null || true)
+[ "$cur" = "$mac" ] && exit 0
+# Normally this runs before networkd and the link is still down.  If it is up
+# (the unit restarted by hand, a boot recovered from emergency mode), it has to
+# go down for the change; bring it back and let networkd configure it again.
+was_up=0
+ip -o link show dev "$IFACE" | grep -q '[<,]UP[,>]' && was_up=1
+ip link set dev "$IFACE" down 2>/dev/null || true
+ip link set dev "$IFACE" address "$mac" && echo "$IFACE: MAC $mac from the EEPROM (was ${cur:-unknown})"
+if [ "$was_up" = 1 ]; then
+    ip link set dev "$IFACE" up
+    networkctl reconfigure "$IFACE" >/dev/null 2>&1 || true
+fi
+exit 0
