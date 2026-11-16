@@ -134,7 +134,7 @@ EXTRA_PKGS="$(pkgs "$HERE/config/packages-extra.txt") $EXTRA_PACKAGES"
 log "apt update + full-upgrade + install"
 chr_apt update
 # debootstrap installs the jammy release versions; bring everything it put in
-# (libc, systemd, apt, ...) up to the current -updates/-security packages.
+# (libc, apt, libsystemd0, ...) up to the current -updates/-security packages.
 chr_apt full-upgrade
 # shellcheck disable=SC2086
 chr_apt install $BASE_PKGS
@@ -172,8 +172,11 @@ chr passwd -l root >/dev/null
 # ---- 4. overlay (config files, services, helper scripts) -------------------------------
 log "applying overlay"
 cp -a "$HERE/overlay/." "$ROOT/"
-# cp -a keeps the git checkout's uid; everything system-wide must belong to root
+# cp -a keeps the git checkout's uid and mode; everything system-wide must belong
+# to root and not be writable by group or others (a checkout made with umask 002
+# would otherwise ship 664 config files)
 ( cd "$HERE/overlay" && find . -mindepth 1 -print0 ) | ( cd "$ROOT" && xargs -0 chown -h root:root )
+( cd "$HERE/overlay" && find . -mindepth 1 ! -type l -print0 ) | ( cd "$ROOT" && xargs -0 chmod go-w )
 chmod 755 "$ROOT"/usr/local/sbin/* "$ROOT"/usr/local/bin/* 2>/dev/null || true
 
 # ---- 5. kernel modules -------------------------------------------------------------
@@ -225,7 +228,8 @@ EOF
 # ---- 9. services ------------------------------------------------------------------
 log "enabling services"
 chr systemctl enable systemd-networkd systemd-resolved systemd-timesyncd ssh >/dev/null 2>&1
-chr systemctl enable npu-firmware.service npu-transfer-proxy.service usb-gadget.service tinker-first-boot.service tinker-eth-mac.service >/dev/null 2>&1
+# usb-gadget.service is not enabled: udev starts it when the UDC appears
+chr systemctl enable npu-firmware.service npu-transfer-proxy.service tinker-first-boot.service tinker-eth-mac.service >/dev/null 2>&1
 chr systemctl disable systemd-networkd-wait-online.service >/dev/null 2>&1 || true
 # serial console on the fiq debugger UART (UART0 header pins); systemd also adds a
 # getty for every console= device automatically.

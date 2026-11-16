@@ -33,7 +33,7 @@ find_video() {   # rkisp1 main path video node
     return 1
 }
 
-SUBDEV="$(find_subdev)" || { echo "no TC358743 subdev found (is the X1301 attached to the CSI0 connector and the default DTB in use?)" >&2; exit 1; }
+SUBDEV="$(find_subdev)" || { echo "no TC358743 subdev found (is the X1301 attached, and is the matching extlinux entry - hdmirx-csi0 or hdmirx-csi1 - the default in /boot/extlinux/extlinux.conf?)" >&2; exit 1; }
 MEDIA="$(find_media)" || { echo "no rkisp1 media device" >&2; exit 1; }
 VIDEO="$(find_video)" || VIDEO=/dev/video0
 SDNAME="$(media-ctl -d "$MEDIA" -p | sed -n "s/.*entity [0-9]*: \(tc35874x[^(]*\|tc358743[^(]*\) (.*/\1/p" | head -1 | sed 's/ *$//')"
