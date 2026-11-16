@@ -26,8 +26,12 @@ This repository is one piece of a set that a `repo` manifest ties together:
     (`npu-status` to check), see `npu/PROVENANCE.md`.
   * `usb-gadget.service` - configfs composite gadget on the Type-C port,
     configured in `/etc/default/usb-gadget` (default: NCM Ethernet + ACM serial).
+    It waits up to 30 s for the dwc3 role switch to register the UDC.
   * `tinker-first-boot.service` - grows the root partition, regenerates SSH host
-    keys and the machine-id on the first boot.
+    keys and the machine-id on the first boot.  It retries at the next boot if
+    growing fails.
+  * `tinker-eth-mac.service` - gives `eth0` the board's own MAC address from the
+    EEPROM on I2C1 (the one the stock image uses) before networkd starts.
   * `hdmirx-setup` - EDID load + ISP pipeline configuration for the X1301.
 * Kernel modules from the kernel build (`--kernel-out`), Realtek RTL8822CE Wi-Fi
   and Bluetooth firmware fetched from linux-firmware (`config/firmware.txt`,
