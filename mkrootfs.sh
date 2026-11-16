@@ -222,7 +222,7 @@ EOF
 # ---- 9. services ------------------------------------------------------------------
 log "enabling services"
 chr systemctl enable systemd-networkd systemd-resolved systemd-timesyncd ssh >/dev/null 2>&1
-chr systemctl enable npu-firmware.service npu-transfer-proxy.service usb-gadget.service tinker-first-boot.service >/dev/null 2>&1
+chr systemctl enable npu-firmware.service npu-transfer-proxy.service usb-gadget.service tinker-first-boot.service tinker-eth-mac.service >/dev/null 2>&1
 chr systemctl disable systemd-networkd-wait-online.service >/dev/null 2>&1 || true
 # serial console on the fiq debugger UART (UART0 header pins); systemd also adds a
 # getty for every console= device automatically.
