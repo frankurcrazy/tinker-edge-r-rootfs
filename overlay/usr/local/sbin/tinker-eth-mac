@@ -8,6 +8,8 @@ set -u
 EEPROM=/sys/bus/i2c/devices/1-0050/eeprom
 IFACE=${1:-eth0}
 
+for _ in $(seq 1 20); do [ -e "/sys/class/net/$IFACE" ] && break; sleep 0.5; done
+[ -e "/sys/class/net/$IFACE" ] || { echo "no $IFACE; nothing to do" >&2; exit 0; }
 for _ in $(seq 1 20); do [ -r "$EEPROM" ] && break; sleep 0.5; done
 [ -r "$EEPROM" ] || { echo "no EEPROM at $EEPROM; keeping the current MAC" >&2; exit 0; }
 
@@ -22,5 +24,15 @@ fi
 
 cur=$(cat "/sys/class/net/$IFACE/address" 2>/dev/null || true)
 [ "$cur" = "$mac" ] && exit 0
+# Normally this runs before networkd and the link is still down.  If it is up
+# (the unit restarted by hand, a boot recovered from emergency mode), it has to
+# go down for the change; bring it back and let networkd configure it again.
+was_up=0
+ip -o link show dev "$IFACE" | grep -q '[<,]UP[,>]' && was_up=1
 ip link set dev "$IFACE" down 2>/dev/null || true
 ip link set dev "$IFACE" address "$mac" && echo "$IFACE: MAC $mac from the EEPROM (was ${cur:-unknown})"
+if [ "$was_up" = 1 ]; then
+    ip link set dev "$IFACE" up
+    networkctl reconfigure "$IFACE" >/dev/null 2>&1 || true
+fi
+exit 0

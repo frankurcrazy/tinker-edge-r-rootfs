@@ -1,8 +1,10 @@
 [Unit]
 Description=Tinker Edge R: give eth0 the MAC address stored in the board EEPROM
 Documentation=file:/usr/local/sbin/tinker-eth-mac
-Wants=sys-subsystem-net-devices-eth0.device network-pre.target
-After=sys-subsystem-net-devices-eth0.device
+# No dependency on eth0's device unit: if eth0 never appeared, networkd (and the
+# usb0 gadget network with it) would wait 90 s for that job.  The script waits
+# a few seconds for eth0 and the EEPROM itself.
+Wants=network-pre.target
 Before=network-pre.target systemd-networkd.service
 
 [Service]
