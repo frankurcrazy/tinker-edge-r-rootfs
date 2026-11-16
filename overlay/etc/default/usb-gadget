@@ -30,5 +30,7 @@ GADGET_MS_FILE=""
 GADGET_MS_REMOVABLE=1
 GADGET_MS_RO=0
 
-# UDC to bind to (empty: first available; the Type-C port is fe800000.dwc3)
-GADGET_UDC="fe800000.dwc3"
+# UDC to bind to; empty: the first one (the board has one, the Type-C port's
+# dwc3).  It is fe800000.usb under this 6.1 kernel; ASUS's 4.4 kernel named it
+# fe800000.dwc3, and pinning that name here kept the gadget from ever binding.
+GADGET_UDC=""
