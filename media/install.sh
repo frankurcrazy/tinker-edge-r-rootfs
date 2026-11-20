@@ -37,22 +37,29 @@ done
 
 LIBDIR=/usr/lib/aarch64-linux-gnu
 DOC=/usr/share/doc/tinker-edge-r
-LOGS="$(mktemp -d)"
+# Build logs are kept next to the rootfs tree (out/rootfs/media-build/ in the build repo).
+LOGS="$(dirname "$ROOT")/media-build"
 IN_SRC=/tmp/mpp-src IN_BUILD=/tmp/mpp-build
-cleanup() { rm -rf "$LOGS" "${ROOT:?}$IN_SRC" "${ROOT:?}$IN_BUILD"; }
+rm -rf "$LOGS"; mkdir -p "$LOGS"
+cleanup() { rm -rf "${ROOT:?}$IN_SRC" "${ROOT:?}$IN_BUILD"; }
 trap cleanup EXIT
 install -d "$ROOT$LIBDIR/pkgconfig" "$ROOT/usr/include/rga" "$ROOT$DOC"
 
 log "MPP $(gitrev "$MPP_SRC"): build in the rootfs"
 step() {   # step <log name> <command...>: quiet unless it fails
     local name=$1; shift
-    "$@" > "$LOGS/$name.log" 2>&1 || { tail -30 "$LOGS/$name.log" >&2; die "MPP $name failed"; }
+    if ! "$@" > "$LOGS/$name.log" 2>&1; then
+        # parallel make keeps printing after the first error: show that one, then the end
+        grep -n -m3 -B3 -A6 -E '(error|Error)( |:)' "$LOGS/$name.log" >&2 || true
+        echo "[...]" >&2
+        tail -15 "$LOGS/$name.log" >&2
+        die "MPP $name failed (full log: $LOGS/$name.log)"
+    fi
 }
 rm -rf "${ROOT:?}$IN_SRC" "${ROOT:?}$IN_BUILD"
 mkdir -p "$ROOT$IN_SRC"
 tar -C "$MPP_SRC" --exclude=.git -cf - . | tar -C "$ROOT$IN_SRC" -xf -
-step configure in_root cmake -S "$IN_SRC" -B "$IN_BUILD" \
-    -DCMAKE_BUILD_TYPE=Release -DRKPLATFORM=ON -DHAVE_DRM=ON \
+step configure in_root cmake -S "$IN_SRC" -B "$IN_BUILD" -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib/aarch64-linux-gnu
 step build in_root cmake --build "$IN_BUILD" -j"$(nproc)"
 step install in_root cmake --install "$IN_BUILD"

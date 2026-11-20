@@ -45,11 +45,11 @@ This repository is one piece of a set that a `repo` manifest ties together:
   (see `media/PROVENANCE.md`):
   * Rockchip MPP, built inside the rootfs with its own toolchain.
   * librga, Rockchip's prebuilt library with a generated `librga.pc`.
-  * The GStreamer Python bindings (`python3-gi`, `gir1.2-gstreamer-1.0`,
-    `gir1.2-gst-plugins-base-1.0`).
 
   No GStreamer plugin for MPP is installed. Build `rockchipmpp` (gstreamer-rockchip)
-  on the board against these.
+  on the board against these. The GStreamer Python bindings (`python3-gi`,
+  `gir1.2-gstreamer-1.0`, `gir1.2-gst-plugins-base-1.0`) come with
+  `config/packages-extra.txt` either way.
 * A user (default `tinker`/`tinker`, passwordless sudo), hostname, timezone,
   locale; SSH enabled; serial console on the UART0 header pins (115200).
 
@@ -66,8 +66,9 @@ sudo ./mkrootfs.sh --out /tmp/rootfs --kernel-out ../out/kernel --npu-src ../src
 
 Requirements: root, `debootstrap`, `qemu-user-static` with binfmt_misc registered
 for aarch64 (the build repo's Docker image provides all of this; the container
-must be `--privileged`). Leave out `--mpp-src`/`--rga-src` to skip the media
-userspace. With them, MPP compiles through qemu, which takes a few minutes.
+must be `--privileged`). Leave out `--mpp-src`/`--rga-src` to skip MPP and librga.
+With them, MPP compiles through qemu, which takes a few minutes, and its build logs
+stay in `<out>/media-build/`.
 
 ## Layout
 
