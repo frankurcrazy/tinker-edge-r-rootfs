@@ -9,6 +9,8 @@
 # with mke2fs -d.
 #
 # usage: mkrootfs.sh --out DIR --kernel-out DIR --npu-src DIR [options]
+#   --mpp-src DIR --rga-src DIR       rockchip-linux/mpp and airockchip/librga checkouts
+#                                     (both or neither; without them no media userspace)
 #   --suite jammy --arch arm64 --mirror URL
 #   --hostname NAME --user NAME --password PW --timezone TZ --locale LOCALE
 #   --extra-packages "pkg pkg ..."   --skip-firmware   --skip-pip
@@ -18,7 +20,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUITE=jammy ARCH=arm64 MIRROR=http://ports.ubuntu.com/ubuntu-ports
-OUTDIR="" KERNEL_OUT="" NPU_SRC=""
+OUTDIR="" KERNEL_OUT="" NPU_SRC="" MPP_SRC="" RGA_SRC=""
 HOSTNAME_="tinker-edge-r" USER_="tinker" PASSWORD_="tinker" TZ_="Etc/UTC" LOCALE_="C.UTF-8"
 EXTRA_PACKAGES="" SKIP_FIRMWARE=0 SKIP_PIP=0 DOCS_DIR=""
 
@@ -31,6 +33,8 @@ while [ $# -gt 0 ]; do
         --out) OUTDIR="$2"; shift 2 ;;
         --kernel-out) KERNEL_OUT="$2"; shift 2 ;;
         --npu-src) NPU_SRC="$2"; shift 2 ;;
+        --mpp-src) MPP_SRC="$2"; shift 2 ;;
+        --rga-src) RGA_SRC="$2"; shift 2 ;;
         --hostname) HOSTNAME_="$2"; shift 2 ;;
         --user) USER_="$2"; shift 2 ;;
         --password) PASSWORD_="$2"; shift 2 ;;
@@ -44,6 +48,9 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$OUTDIR" ] || { echo "--out is required" >&2; exit 2; }
+if [ -n "$MPP_SRC" ] || [ -n "$RGA_SRC" ]; then
+    [ -n "$MPP_SRC" ] && [ -n "$RGA_SRC" ] || { echo "--mpp-src and --rga-src go together" >&2; exit 2; }
+fi
 [ "$(id -u)" = 0 ] || { echo "must run as root" >&2; exit 1; }
 command -v debootstrap >/dev/null || { echo "debootstrap not installed" >&2; exit 1; }
 # Foreign-architecture builds rely on the host kernel's binfmt_misc registration for
@@ -206,6 +213,14 @@ fi
 log "installing NPU userspace"
 "$HERE/npu/install.sh" "$ROOT" "$NPU_SRC" "$SKIP_PIP"
 
+# ---- 7b. media userspace (MPP, librga) -----------------------------------------------
+if [ -n "$MPP_SRC" ]; then
+    log "installing media userspace (MPP, librga)"
+    "$HERE/media/install.sh" "$ROOT" "$MPP_SRC" "$RGA_SRC"
+else
+    log "no --mpp-src/--rga-src: skipping the media userspace"
+fi
+
 # ---- 8. HDMI-RX helpers (EDID) --------------------------------------------------------
 mkdir -p "$ROOT/usr/share/hdmirx"
 python3 "$HERE/tools/mkedid.py" --profile 1080p30 -o "$ROOT/usr/share/hdmirx/edid-1080p30.bin"
@@ -258,6 +273,8 @@ chr dpkg-query -W -f='${Package}\t${Version}\n' > "$OUTDIR/packages.txt" 2>/dev/
     echo "rootfs repo:  $(git -c safe.directory='*' -C "$HERE" rev-parse HEAD 2>/dev/null || echo unknown)"
     echo "kernel:       ${REL:-none}"
     echo "npu src:      ${NPU_SRC:-none} ($(git -c safe.directory='*' -C "$NPU_SRC" rev-parse --short HEAD 2>/dev/null || echo ?))"
+    echo "mpp src:      ${MPP_SRC:-none} ($(git -c safe.directory='*' -C "$MPP_SRC" rev-parse --short HEAD 2>/dev/null || echo ?))"
+    echo "rga src:      ${RGA_SRC:-none} ($(git -c safe.directory='*' -C "$RGA_SRC" rev-parse --short HEAD 2>/dev/null || echo ?))"
     echo "user:         $USER_ (password set at build time; sudo without password)"
     echo "packages:     $(wc -l < "$OUTDIR/packages.txt")"
     echo "size:         $(du -sxh "$ROOT" | cut -f1)"

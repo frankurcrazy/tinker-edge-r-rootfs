@@ -41,6 +41,15 @@ This repository is one piece of a set that a `repo` manifest ties together:
   and Bluetooth firmware fetched from linux-firmware (`config/firmware.txt`,
   sha256-pinned), NPU firmware/proxy/API from the `RK3399Pro_npu` checkout
   (`--npu-src`), RKNN Toolkit Lite for Python 3.10.
+* The media userspace for the hardware codec, from `--mpp-src` and `--rga-src`
+  (see `media/PROVENANCE.md`):
+  * Rockchip MPP, built inside the rootfs with its own toolchain.
+  * librga, Rockchip's prebuilt library with a generated `librga.pc`.
+  * The GStreamer Python bindings (`python3-gi`, `gir1.2-gstreamer-1.0`,
+    `gir1.2-gst-plugins-base-1.0`).
+
+  No GStreamer plugin for MPP is installed. Build `rockchipmpp` (gstreamer-rockchip)
+  on the board against these.
 * A user (default `tinker`/`tinker`, passwordless sudo), hostname, timezone,
   locale; SSH enabled; serial console on the UART0 header pins (115200).
 
@@ -51,12 +60,14 @@ ext4 partition with `mke2fs -d` (no loop devices anywhere).
 
 ```sh
 sudo ./mkrootfs.sh --out /tmp/rootfs --kernel-out ../out/kernel --npu-src ../src/npu \
+     --mpp-src ../src/mpp --rga-src ../src/rga \
      --hostname tinker --user tinker --password tinker
 ```
 
 Requirements: root, `debootstrap`, `qemu-user-static` with binfmt_misc registered
 for aarch64 (the build repo's Docker image provides all of this; the container
-must be `--privileged`).
+must be `--privileged`). Leave out `--mpp-src`/`--rga-src` to skip the media
+userspace. With them, MPP compiles through qemu, which takes a few minutes.
 
 ## Layout
 
@@ -65,9 +76,10 @@ mkrootfs.sh            the builder
 config/                package lists, apt sources template, firmware pins
 overlay/               files copied into the rootfs (etc/, usr/local/...)
 npu/                   NPU userspace glue: install.sh, vendored ASUS/Rockchip binaries, wheel, provenance
+media/                 MPP + librga install (install.sh, provenance)
 tools/mkedid.py        EDID generator for the HDMI-RX bridge
 ```
 
 Scripts in this repository are MIT licensed (`LICENSE`).  Vendored third-party
 binaries keep their own licenses (`npu/LICENSE.asus-debian`, and the
-`RK3399Pro_npu` license copied into the image).
+`RK3399Pro_npu`, MPP and librga licenses copied into the image).
